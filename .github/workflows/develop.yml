@@ -1,0 +1,50 @@
+name: Build and Push to Google Cloud run (Develop Enviroment)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - "develop"
+  push:
+    branches:
+      - "develop"
+jobs:
+  build_deploy:
+
+    environment: DEV
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get code
+        uses: actions/checkout@v3
+        
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
+
+      - name: Build container image
+        run: |
+          docker build -f Dockerfile -t ${{ secrets.IMAGE_NAME }} .
+          docker tag ${{ secrets.IMAGE_NAME }} ${{ secrets.REGION }}-docker.pkg.dev/${{ secrets.PROJECT_ID }}/${{ secrets.REPO_NAME }}/${{ secrets.IMAGE_NAME }}:latest
+          gcloud auth configure-docker ${{ secrets.REGION }}-docker.pkg.dev
+          docker push ${{ secrets.REGION }}-docker.pkg.dev/${{ secrets.PROJECT_ID }}/${{ secrets.REPO_NAME }}/${{ secrets.IMAGE_NAME }} --all-tags
+
+      - name: Deploy to Google Cloud
+        run: |
+          gcloud run deploy ${{ secrets.SERVICE_NAME }} \
+          --image=${{ secrets.REGION }}-docker.pkg.dev/${{ secrets.PROJECT_ID }}/${{ secrets.REPO_NAME }}/${{ secrets.IMAGE_NAME }}:latest \
+          --allow-unauthenticated \
+          --region=${{ secrets.REGION }} \
+          --project=${{ secrets.PROJECT_ID }} \
+          --port=80 \
+          --set-env-vars "${{ vars.ENV }}" \
+
+# case muốn push tag theo ID của github actions
+#docker tag ${{secrets.IMAGE_NAME}} ${{secrets.REGION}}-docker.pkg.dev/${{secrets.PROJECT_ID}}/${{secrets.REPO_NAME}}/${{secrets.IMAGE_NAME>:${GITHUB_RUN_ID}
